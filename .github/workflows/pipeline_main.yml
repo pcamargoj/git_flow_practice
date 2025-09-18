@@ -55,6 +55,9 @@ jobs:
     needs: create-release
     
     steps:
+    - name: Checkout de repositorio
+      uses: actions/checkout@v5
+
     - name: Configuración de entorno desarrollo python
       uses: actions/setup-python@v5
       with:
