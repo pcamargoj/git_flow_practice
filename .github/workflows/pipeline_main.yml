@@ -30,7 +30,7 @@ jobs:
   create-release:
     name: Crear rama release
     runs-on: ubuntu-latest
-    needs: check-release-trigger
+    needs: check-release
     if: needs.check-release.outputs.version != ''
 
     steps:
