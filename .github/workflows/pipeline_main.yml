@@ -6,7 +6,7 @@ jobs:
   main:
     name: Pruebas 
     runs-on: ubuntu-latest
-    if: contains(github.event.head_commit.message, '[run-release]')
+    if: contains(github.event.head_commit.message, 'run-release')
     steps:
     - name: Extraer versión del commit
       id: extract-version
