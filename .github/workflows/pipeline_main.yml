@@ -9,6 +9,7 @@ jobs:
     if: contains(github.event.head_commit.message, 'run-release')
     outputs:
       version: ${{ steps.extract-version.outputs.version }}
+    
     steps:
     - name: Extraer versión del commit
       id: extract-version
@@ -47,3 +48,23 @@ jobs:
           exit 1
         fi
         echo "La rama $RELEASE_BRANCH no existe, se puede crear"
+
+  unit-testing:
+    name: Verificar pruebas unitarias
+    runs-on: ubuntu-latest
+    needs: check-release
+    
+    steps:
+    - name: Configuración de entorno desarrollo python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+
+    - name: Instalación de librerías y dependencias
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Correr pruebas
+      id: correr-pruebas
+      run: python -m unittest discover -s tests -v
