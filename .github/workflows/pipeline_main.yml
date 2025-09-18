@@ -48,6 +48,23 @@ jobs:
           exit 1
         fi
         echo "La rama $RELEASE_BRANCH no existe, se puede crear"
+    
+    - name: Crear rama release
+      run: |
+        VERSION="${{ needs.check-release.outputs.version }}"
+        RELEASE_BRANCH="release/$VERSION"
+        
+        echo "Creando rama $RELEASE_BRANCH desde develop"
+        
+        git checkout develop
+        git pull origin develop
+        
+        git checkout -b $RELEASE_BRANCH
+        
+        # Push de la nueva rama
+        git push origin $RELEASE_BRANCH
+        
+        echo "Rama $RELEASE_BRANCH creada exitosamente"
 
   unit-testing:
     name: Verificar pruebas unitarias
