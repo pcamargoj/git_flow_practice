@@ -4,15 +4,15 @@ on:
     branches: [ develop ]
 jobs:
   job1:
-    name: Pruebas
+    name: Pruebas unitarias 
     runs-on: ubuntu-latest
     steps:
-    #- name: Checkout de repositorio
-    #  uses: actions/checkout@v2
-    #- name: Configuración de entorno de python
-    #  uses: actions/setup-python@v2
-    #  with:
-    #      python-version: '3.7'
+    - name: Checkout de repositorio
+      uses: actions/checkout@v4
+    - name: Configuración de entorno de python
+      uses: actions/setup-python@v5
+      with:
+          python-version: '3.7'
     - name: Instalación de librerías y dependencias
       run: |
         python -m pip install --upgrade pip
