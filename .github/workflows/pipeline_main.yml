@@ -4,8 +4,9 @@ on:
     branches: [ develop ]
 jobs:
   main:
-    name: Pruebas unitarias 
+    name: Pruebas 
     runs-on: ubuntu-latest
+    if: contains(github.event.head_commit.message, '[run-release]')
     steps:
     - name: Checkout de repositorio
       uses: actions/checkout@v5
