@@ -21,7 +21,7 @@ jobs:
           echo "Versión encontrada: $VERSION"
         else
           echo "No se encontró versión válida en el mensaje del commit"
-          echo "Formato esperado: [create-release:1.2.0]"
+          echo "Formato esperado: [run-release:1.2.0]"
           exit 1
         fi
 
