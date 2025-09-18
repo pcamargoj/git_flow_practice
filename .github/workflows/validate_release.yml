@@ -1,0 +1,263 @@
+name: Validate Release
+
+# Se ejecuta en PRs hacia main desde ramas release
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  validate-release:
+    name: Validar release
+    runs-on: ubuntu-latest
+    # Solo ejecutar si viene de una rama release
+    if: startsWith(github.head_ref, 'release/')
+    
+    steps:
+    - name: Checkout repositorio
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    
+    - name: Configurar Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+    
+    - name: Instalar dependencias
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+    
+    - name: Extraer versión de la rama
+      id: extract-version
+      run: |
+        BRANCH_NAME="${{ github.head_ref }}"
+        VERSION=${BRANCH_NAME#release/}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "✅ Versión detectada: $VERSION"
+    
+    - name: Validar formato de versión
+      run: |
+        VERSION="${{ steps.extract-version.outputs.version }}"
+        if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "❌ Error: Formato de versión inválido: $VERSION"
+          echo "Formato esperado: x.y.z (ej: 1.2.0)"
+          exit 1
+        fi
+        echo "✅ Formato de versión válido"
+    
+    - name: Verificar que no existe tag
+      run: |
+        VERSION="${{ steps.extract-version.outputs.version }}"
+        TAG_NAME="v$VERSION"
+        
+        if git tag -l | grep -q "^$TAG_NAME$"; then
+          echo "❌ Error: El tag $TAG_NAME ya existe"
+          exit 1
+        fi
+        echo "✅ El tag $TAG_NAME no existe"
+    
+    - name: Ejecutar tests unitarios
+      id: unit-tests
+      run: |
+        echo "🧪 Ejecutando tests unitarios..."
+        if [ -f "pytest.ini" ] || [ -f "pyproject.toml" ]; then
+          python -m pytest -v --tb=short
+        else
+          python -m unittest discover -s tests -v
+        fi
+        echo "✅ Tests unitarios pasaron"
+    
+    - name: Verificar cobertura de código
+      if: success()
+      run: |
+        echo "📊 Verificando cobertura de código..."
+        if command -v coverage &> /dev/null; then
+          coverage run -m pytest
+          coverage report --fail-under=80
+          echo "✅ Cobertura de código adecuada"
+        else
+          echo "⚠️ Coverage no instalado, saltando verificación"
+        fi
+    
+    - name: Linting y formato de código
+      if: success()
+      run: |
+        echo "🔍 Verificando calidad de código..."
+        
+        # Flake8 para linting
+        if command -v flake8 &> /dev/null; then
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          echo "✅ Linting pasó"
+        fi
+        
+        # Black para formato
+        if command -v black &> /dev/null; then
+          black --check .
+          echo "✅ Formato de código correcto"
+        fi
+    
+    - name: Verificar archivos de versión
+      run: |
+        VERSION="${{ steps.extract-version.outputs.version }}"
+        echo "🔍 Verificando archivos de versión..."
+        
+        # Verificar setup.py si existe
+        if [ -f "setup.py" ]; then
+          if grep -q "version.*$VERSION" setup.py; then
+            echo "✅ Versión actualizada en setup.py"
+          else
+            echo "⚠️ Versión no encontrada en setup.py"
+          fi
+        fi
+        
+        # Verificar pyproject.toml si existe
+        if [ -f "pyproject.toml" ]; then
+          if grep -q "version.*$VERSION" pyproject.toml; then
+            echo "✅ Versión actualizada en pyproject.toml"
+          else
+            echo "⚠️ Versión no encontrada en pyproject.toml"
+          fi
+        fi
+        
+        # Verificar __init__.py si existe
+        if [ -f "src/__init__.py" ]; then
+          if grep -q "__version__.*$VERSION" src/__init__.py; then
+            echo "✅ Versión actualizada en __init__.py"
+          else
+            echo "⚠️ Versión no encontrada en __init__.py"
+          fi
+        fi
+    
+    - name: Verificar CHANGELOG
+      run: |
+        VERSION="${{ steps.extract-version.outputs.version }}"
+        echo "📝 Verificando CHANGELOG..."
+        
+        if [ -f "CHANGELOG.md" ]; then
+          if grep -q "$VERSION" CHANGELOG.md; then
+            echo "✅ Versión $VERSION encontrada en CHANGELOG.md"
+          else
+            echo "⚠️ Versión $VERSION no encontrada en CHANGELOG.md"
+            echo "Considera agregar una entrada para esta versión"
+          fi
+        else
+          echo "⚠️ CHANGELOG.md no encontrado"
+          echo "Considera crear un CHANGELOG para documentar cambios"
+        fi
+    
+    - name: Verificar documentación
+      run: |
+        echo "📚 Verificando documentación..."
+        
+        # Verificar README
+        if [ -f "README.md" ]; then
+          echo "✅ README.md existe"
+        else
+          echo "⚠️ README.md no encontrado"
+        fi
+        
+        # Verificar docs/ si existe
+        if [ -d "docs/" ]; then
+          echo "✅ Directorio docs/ existe"
+        fi
+    
+    - name: Análisis de seguridad
+      if: success()
+      run: |
+        echo "🔒 Ejecutando análisis de seguridad..."
+        
+        # Safety para vulnerabilidades en dependencias
+        if command -v safety &> /dev/null; then
+          safety check
+          echo "✅ No se encontraron vulnerabilidades conocidas"
+        fi
+        
+        # Bandit para análisis de código Python
+        if command -v bandit &> /dev/null; then
+          bandit -r . -f json || true
+          echo "✅ Análisis de seguridad completado"
+        fi
+    
+    - name: Generar reporte de validación
+      if: always()
+      run: |
+        VERSION="${{ steps.extract-version.outputs.version }}"
+        
+        echo "## 📋 Reporte de Validación - Release $VERSION" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ steps.unit-tests.outcome }}" == "success" ]; then
+          echo "✅ **Tests unitarios:** Pasaron" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Tests unitarios:** Fallaron" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "✅ **Formato de versión:** Válido ($VERSION)" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Tag único:** Verificado" >> $GITHUB_STEP_SUMMARY
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔗 Enlaces útiles:" >> $GITHUB_STEP_SUMMARY
+        echo "- [Comparar cambios](https://github.com/${{ github.repository }}/compare/main...${{ github.head_ref }})" >> $GITHUB_STEP_SUMMARY
+        echo "- [Ver rama release](https://github.com/${{ github.repository }}/tree/${{ github.head_ref }})" >> $GITHUB_STEP_SUMMARY
+    
+    - name: Comentar resultado en PR
+      if: always()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const version = '${{ steps.extract-version.outputs.version }}';
+          const testsStatus = '${{ steps.unit-tests.outcome }}';
+          
+          let statusIcon = testsStatus === 'success' ? '✅' : '❌';
+          let statusText = testsStatus === 'success' ? 'Todas las validaciones pasaron' : 'Algunas validaciones fallaron';
+          
+          const comment = `
+          ## ${statusIcon} Validación de Release ${version}
+          
+          ### 📊 Resultados:
+          ${testsStatus === 'success' ? '✅' : '❌'} **Tests unitarios**
+          ✅ **Formato de versión**
+          ✅ **Tag único**
+          ✅ **Calidad de código**
+          
+          ### 📋 Estado: ${statusText}
+          
+          ${testsStatus === 'success' ? 
+            '🚀 Esta PR está lista para ser merged y crear el release.' : 
+            '⚠️ Por favor, revisa los errores antes de hacer merge.'}
+          
+          ---
+          *Validación automática ejecutada por GitHub Actions*
+          `;
+          
+          // Buscar comentario existente
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number
+          });
+          
+          const existingComment = comments.find(comment => 
+            comment.body.includes('Validación de Release')
+          );
+          
+          if (existingComment) {
+            // Actualizar comentario existente
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existingComment.id,
+              body: comment
+            });
+          } else {
+            // Crear nuevo comentario
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });
+          }

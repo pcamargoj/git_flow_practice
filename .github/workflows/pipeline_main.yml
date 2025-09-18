@@ -61,9 +61,7 @@ jobs:
         
         git checkout -b $RELEASE_BRANCH
         
-        # Push de la nueva rama
-        git push origin $RELEASE_BRANCH
-        
+        git push origin $RELEASE_BRANCH    
         echo "Rama $RELEASE_BRANCH creada exitosamente"
 
   unit-testing:
@@ -88,3 +86,28 @@ jobs:
     - name: Correr pruebas
       id: correr-pruebas
       run: python -m unittest discover -s tests -v
+
+  combine-with-main:
+    name: Mezclar contra main
+    runs-on: ubuntu-latest
+    needs: unit-testing
+
+    steps:
+    - name: Checkout repositorio
+      uses: actions/checkout@v5
+
+    - name: Verificar que la rama release no existe
+      run: |
+        VERSION="${{ needs.check-release.outputs.version }}"
+        RELEASE_BRANCH="release/$VERSION"
+
+        echo "Actualizando rama main"
+
+        git checkout main
+        git pull origin main
+
+        git merge RELEASE_BRANCH
+        git push origin main 
+
+        echo "Rama main actualizada exitosamente con $RELEASE_BRANCH"
+

@@ -1,0 +1,125 @@
+name: Create Release Branch
+
+# Trigger manual para crear rama release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versión del release (ej: 1.2.0)'
+        required: true
+        type: string
+      base_branch:
+        description: 'Rama base para el release'
+        required: true
+        default: 'develop'
+        type: choice
+        options:
+          - develop
+          - main
+
+jobs:
+  create-release-branch:
+    name: Crear rama release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repositorio
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Configurar Git
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+    
+    - name: Validar formato de versión
+      run: |
+        if [[ ! "${{ github.event.inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "❌ Error: La versión debe tener formato x.y.z (ej: 1.2.0)"
+          exit 1
+        fi
+        echo "✅ Formato de versión válido: ${{ github.event.inputs.version }}"
+    
+    - name: Verificar que la rama release no existe
+      run: |
+        RELEASE_BRANCH="release/${{ github.event.inputs.version }}"
+        if git ls-remote --heads origin $RELEASE_BRANCH | grep -q $RELEASE_BRANCH; then
+          echo "❌ Error: La rama $RELEASE_BRANCH ya existe"
+          exit 1
+        fi
+        echo "✅ La rama $RELEASE_BRANCH no existe, se puede crear"
+    
+    - name: Crear rama release
+      run: |
+        RELEASE_BRANCH="release/${{ github.event.inputs.version }}"
+        BASE_BRANCH="${{ github.event.inputs.base_branch }}"
+        
+        echo "🔄 Creando rama $RELEASE_BRANCH desde $BASE_BRANCH"
+        
+        # Cambiar a la rama base
+        git checkout $BASE_BRANCH
+        git pull origin $BASE_BRANCH
+        
+        # Crear y cambiar a la nueva rama release
+        git checkout -b $RELEASE_BRANCH
+        
+        # Push de la nueva rama
+        git push origin $RELEASE_BRANCH
+        
+        echo "✅ Rama $RELEASE_BRANCH creada exitosamente"
+    
+    - name: Crear issue de seguimiento
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const version = '${{ github.event.inputs.version }}';
+          const releaseBranch = `release/${version}`;
+          
+          const issueBody = `
+          ## 🚀 Release ${version}
+          
+          Esta issue rastrea el progreso del release **${version}**.
+          
+          ### ✅ Tareas completadas:
+          - [x] Rama \`${releaseBranch}\` creada desde \`${{ github.event.inputs.base_branch }}\`
+          
+          ### 📋 Tareas pendientes:
+          - [ ] Actualizar versión en archivos de configuración
+          - [ ] Ejecutar pruebas completas
+          - [ ] Actualizar CHANGELOG.md
+          - [ ] Crear Pull Request a main
+          - [ ] Crear tag de release
+          - [ ] Merge a main
+          - [ ] Merge de vuelta a develop
+          
+          ### 🔗 Enlaces útiles:
+          - [Rama release](https://github.com/${{ github.repository }}/tree/${releaseBranch})
+          - [Comparar cambios](https://github.com/${{ github.repository }}/compare/${{ github.event.inputs.base_branch }}...${releaseBranch})
+          
+          ---
+          *Creado automáticamente por GitHub Actions*
+          `;
+          
+          const issue = await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `🚀 Release ${version}`,
+            body: issueBody,
+            labels: ['release', 'tracking']
+          });
+          
+          console.log(`✅ Issue de seguimiento creada: #${issue.data.number}`);
+    
+    - name: Resumen de la ejecución
+      run: |
+        echo "## 🎉 Release Branch Creada Exitosamente" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Versión:** ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Rama base:** ${{ github.event.inputs.base_branch }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Rama release:** release/${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔗 Enlaces:" >> $GITHUB_STEP_SUMMARY
+        echo "- [Ver rama release](https://github.com/${{ github.repository }}/tree/release/${{ github.event.inputs.version }})" >> $GITHUB_STEP_SUMMARY
+        echo "- [Crear PR a main](https://github.com/${{ github.repository }}/compare/main...release/${{ github.event.inputs.version }})" >> $GITHUB_STEP_SUMMARY
