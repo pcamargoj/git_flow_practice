@@ -1,0 +1,107 @@
+name: CI main
+on:
+  push:
+    branches: [ develop ]
+jobs:
+  check-release:
+    name: Verificar trigger de release 
+    runs-on: ubuntu-latest
+    if: contains(github.event.head_commit.message, 'run-release')
+    outputs:
+      version: ${{ steps.extract-version.outputs.version }}
+    
+    steps:
+    - name: Extraer versión del commit
+      id: extract-version
+      run: |
+        COMMIT_MSG="${{ github.event.head_commit.message }}"
+        echo "Mensaje del commit: $COMMIT_MSG"
+        
+        # Buscar patrón [run-release:x.y.z] en el mensaje
+        if [[ $COMMIT_MSG =~ \[run-release:([0-9]+\.[0-9]+\.[0-9]+)\] ]]; then
+          VERSION="${BASH_REMATCH[1]}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Versión encontrada: $VERSION"
+        else
+          echo "No se encontró versión válida en el mensaje del commit"
+          echo "Formato esperado: [run-release:1.2.0]" 
+          exit 1
+        fi
+
+  create-release:
+    name: Crear rama release
+    runs-on: ubuntu-latest
+    needs: check-release
+    if: needs.check-release.outputs.version != ''
+
+    steps:
+    - name: Checkout repositorio
+      uses: actions/checkout@v5
+
+    - name: Verificar que la rama release no existe
+      run: |
+        VERSION="${{ needs.check-release.outputs.version }}"
+        RELEASE_BRANCH="release/$VERSION"
+        
+        if git ls-remote --heads origin $RELEASE_BRANCH | grep -q $RELEASE_BRANCH; then
+          echo "Error: La rama $RELEASE_BRANCH ya existe"
+          exit 1
+        fi
+        echo "La rama $RELEASE_BRANCH no existe, se puede crear"
+    
+    - name: Crear rama release
+      run: |
+        VERSION="${{ needs.check-release.outputs.version }}"
+        RELEASE_BRANCH="release/$VERSION"
+        
+        echo "Creando rama $RELEASE_BRANCH desde develop"
+        
+        git checkout develop
+        git pull origin develop
+        
+        git checkout -b $RELEASE_BRANCH
+        
+        git push -f -u origin $RELEASE_BRANCH    
+        echo "Rama $RELEASE_BRANCH creada exitosamente"
+
+  unit-testing:
+    name: Verificar pruebas unitarias
+    runs-on: ubuntu-latest
+    needs: [check-release, create-release]
+    
+    steps:
+    - name: Checkout de repositorio
+      uses: actions/checkout@v5
+
+    - name: Configuración de entorno desarrollo python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+
+    - name: Instalación de librerías y dependencias
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    #- name: Correr pruebas
+    #  id: correr-pruebas
+    #  run: python -m unittest discover -s tests -v
+
+  combine-with-main:
+    name: Mezclar contra main
+    runs-on: ubuntu-latest
+    needs: [check-release, create-release, unit-testing]
+
+    steps:
+      - uses: actions/checkout@master
+
+      - name: Merge release -> main
+        uses: devmasx/merge-branch@master
+        with:
+          type: now
+          from_branch: release/${{ needs.check-release.outputs.version }}
+          target_branch: master
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+
+        
