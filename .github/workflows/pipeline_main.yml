@@ -61,7 +61,7 @@ jobs:
         
         git checkout -b $RELEASE_BRANCH
         
-        git push origin $RELEASE_BRANCH    
+        git push -f -u origin $RELEASE_BRANCH    
         echo "Rama $RELEASE_BRANCH creada exitosamente"
 
   unit-testing:
@@ -93,20 +93,15 @@ jobs:
     needs: unit-testing
 
     steps:
-    - name: Checkout repositorio
-      uses: actions/checkout@v5
+      - uses: actions/checkout@master
 
-    - name: Verificar que la rama release no existe
-      run: |
-        VERSION="${{ needs.check-release.outputs.version }}"
-        RELEASE_BRANCH="release/$VERSION"
+      - name: Merge release -> main
+        uses: devmasx/merge-branch@master
+        with:
+          type: now
+          from_branch: release/${{ needs.check-release.outputs.version }}
+          target_branch: main
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
-        echo "Actualizando rama main"
 
-        git checkout master
-        git pull origin master
-
-        git merge $RELEASE_BRANCH
-        git push origin master 
-
-        echo "Rama main actualizada exitosamente con $RELEASE_BRANCH"
+        
