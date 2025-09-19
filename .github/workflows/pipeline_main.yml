@@ -100,7 +100,7 @@ jobs:
         with:
           type: now
           from_branch: release/${{ needs.check-release.outputs.version }}
-          target_branch: main
+          target_branch: master
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
 
